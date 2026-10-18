@@ -5,18 +5,15 @@
 -- ════════════════════════════════════════════════════════════
 
 -- ──────────────────────────────────────────────────────────
---  วิธีที่ 1: จาก GitHub Raw  (แนะนำ — เปลี่ยน URL ให้ตรง)
---  อัปโหลดทั้งสองไฟล์ไปที่ GitHub repo แล้วใส่ raw URL ด้านล่าง
+--  วิธีที่ 1: จาก GitHub Raw  (แนะนำ — ใส่ URL เรียบร้อยแล้ว)
 -- ──────────────────────────────────────────────────────────
 local URLS = {
-    main  = "",   -- https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3.lua
-    patch = "",   -- https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3_BanDodge_Patch.lua
+    main  = "https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3.lua",
+    patch = "https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3_BanDodge_Patch.lua",
 }
 
 -- ──────────────────────────────────────────────────────────
 --  วิธีที่ 2: จาก File System  (ถ้า executor มี readfile)
---  วาง ZeroESP_v3.lua และ ZeroESP_v3_BanDodge_Patch.lua
---  ไว้ใน workspace folder ของ executor ก่อน
 -- ──────────────────────────────────────────────────────────
 local FILES = {
     main  = "ZeroESP_v3.lua",
@@ -25,13 +22,8 @@ local FILES = {
 
 -- ──────────────────────────────────────────────────────────
 --  วิธีที่ 3: Chunk Execute  (fallback ไม่ต้องมีไฟล์)
---  สำหรับ executor ที่ limit script size
---  split script ด้วย pcall-wrapped loadstring
 -- ──────────────────────────────────────────────────────────
 local function chunkLoad(src)
-    -- แบ่ง source เป็น chunk ขนาด 30KB (safe สำหรับ executor เกือบทุกตัว)
-    -- แต่ Lua ต้องการ complete statement ใน chunk → ไม่ใช้วิธีนี้กับ single-scope script
-    -- ใช้ loadstring ปกติก่อน ถ้า fail ค่อย report
     local ok, err = pcall(loadstring(src))
     if not ok then
         warn("[ZeroLoader] loadstring failed: " .. tostring(err))
