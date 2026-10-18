@@ -2295,3 +2295,380 @@ task.spawn(function()
 end)
 
 notify("ZERO พร้อมใช้งาน — แตะโลโก้ Z เพื่อเปิดเมนู" .. (#errors > 0 and (" (มี " .. #errors .. " error ดูที่แท็บ UI)") or ""))
+-- ══════════════════════════════════════
+--  ZERO ADAPTIVE BYPASS MODULE v1.1
+--  วางต่อท้าย script เดิม หลังบรรทัด notify สุดท้าย
+-- ══════════════════════════════════════
+
+local ABP = {
+    log     = {},
+    speed   = { modeIdx = 1, snapCount = 0, lastPos = nil, lastSnap = 0 },
+    god     = { mode = 1, hookConn = nil },
+    warp    = { hopMode = false },
+    enabled = true,
+}
+
+local function AL(tag, msg)
+    local t = string.format("[%.2f][%s] %s", os.clock(), tag, msg)
+    ABP.log[#ABP.log + 1] = t
+    if #ABP.log > 200 then table.remove(ABP.log, 1) end
+    warn(t)
+end
+
+-- ══════════════════════════════════════
+--  REMOTE SPY + AUTO BLOCK
+-- ══════════════════════════════════════
+local RemoteBlock = {}
+local RemoteHits  = {}
+local lastHealth  = 100
+
+local function setupRemoteSpy()
+    if not CAP.Hook then
+        AL("SPY", "hookmetamethod ไม่รองรับ — ข้าม")
+        return
+    end
+    local mt    = getrawmetatable(game)
+    local oldNC = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        if checkcaller() then return oldNC(self, ...) end
+        local method = getnamecallmethod()
+        if method == "FireServer" or method == "InvokeServer" then
+            local name = self.Name
+            if RemoteBlock[name] then
+                AL("BLOCK", "blocked → " .. name)
+                return
+            end
+            RemoteHits[name] = (RemoteHits[name] or 0) + 1
+        end
+        return oldNC(self, ...)
+    end)
+    setreadonly(mt, true)
+    AL("SPY", "remote hook ติดแล้ว")
+end
+
+local function watchHealth()
+    task.spawn(function()
+        while alive do
+            task.wait(0.5)
+            local c   = lp.Character
+            local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if not hum then lastHealth = 100; continue end
+            local hp = hum.Health
+            if hp < lastHealth - 2 then
+                local suspects = {}
+                for name, count in pairs(RemoteHits) do
+                    suspects[#suspects + 1] = { name = name, count = count }
+                end
+                table.sort(suspects, function(a, b) return a.count > b.count end)
+                if #suspects > 0 then
+                    local top = suspects[1]
+                    AL("GOD", string.format(
+                        "health ลด %.1f→%.1f | suspect: [%s] %dx",
+                        lastHealth, hp, top.name, top.count
+                    ))
+                    if not RemoteBlock[top.name] then
+                        RemoteBlock[top.name] = true
+                        AL("GOD", "auto-block → " .. top.name)
+                        notify("🛡 God: block remote [" .. top.name .. "]")
+                    end
+                else
+                    AL("GOD", string.format(
+                        "health ลด %.1f→%.1f | ไม่เจอ remote → server set โดยตรง",
+                        lastHealth, hp
+                    ))
+                    ABP.god:nextMode()
+                end
+                RemoteHits = {}
+            end
+            lastHealth = hp
+        end
+    end)
+end
+
+-- ══════════════════════════════════════
+--  GOD MODE ADAPTIVE
+--  Mode 1: HealthChanged hook
+--  Mode 2: __newindex hook
+--  Mode 3: rapid respawn
+-- ══════════════════════════════════════
+local godModeNames = { "HealthChanged Hook", "__newindex Hook", "Rapid Respawn" }
+
+ABP.god.modes = {
+    function(char)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        if ABP.god.hookConn then pcall(function() ABP.god.hookConn:Disconnect() end) end
+        ABP.god.hookConn = hum.HealthChanged:Connect(function(hp)
+            if not CFG.God.Enabled then return end
+            if hp < hum.MaxHealth then
+                task.defer(function()
+                    pcall(function() hum.Health = hum.MaxHealth end)
+                end)
+            end
+        end)
+        AL("GOD", "mode 1 ติด (HealthChanged hook)")
+    end,
+
+    function(char)
+        if not CAP.Hook then
+            AL("GOD", "mode 2 ต้องการ hookmetamethod → ข้าม")
+            ABP.god:nextMode()
+            return
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        local mt = getrawmetatable(hum)
+        setreadonly(mt, false)
+        local oldNI = mt.__newindex
+        mt.__newindex = newcclosure(function(self, key, value)
+            if checkcaller() then return oldNI(self, key, value) end
+            if key == "Health" and CFG.God.Enabled then
+                if value < self.MaxHealth then
+                    AL("GOD", "mode 2 blocked Health set → " .. tostring(value))
+                    return
+                end
+            end
+            return oldNI(self, key, value)
+        end)
+        setreadonly(mt, true)
+        AL("GOD", "mode 2 ติด (__newindex hook)")
+    end,
+
+    function(char)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        if ABP.god.hookConn then pcall(function() ABP.god.hookConn:Disconnect() end) end
+        ABP.god.hookConn = hum.Died:Connect(function()
+            if not CFG.God.Enabled then return end
+            AL("GOD", "mode 3: ตาย → respawn")
+            task.wait(0.05)
+            pcall(function() lp:LoadCharacter() end)
+        end)
+        AL("GOD", "mode 3 ติด (rapid respawn)")
+    end,
+}
+
+function ABP.god:nextMode()
+    if self.mode >= #self.modes then
+        AL("GOD", "ลอง god ครบแล้ว — remote block อย่างเดียว")
+        notify("🛡 God Mode: ทุก mode ล้มเหลว → ใช้ Remote Block อย่างเดียว")
+        return
+    end
+    self.mode = self.mode + 1
+    local name = godModeNames[self.mode] or "?"
+    AL("GOD", "switch god → mode " .. self.mode)
+    notify("🛡 God Mode เปลี่ยนเป็น Mode " .. self.mode .. ": " .. name)
+    local c = lp.Character
+    if c then self.modes[self.mode](c) end
+end
+
+function ABP.god:apply(char)
+    if not CFG.God.Enabled then return end
+    self.modes[self.mode](char)
+end
+
+-- ══════════════════════════════════════
+--  SPEED ADAPTIVE
+--  Mode 1: CFrame
+--  Mode 2: MicroStep
+--  Mode 3: FakeLag
+-- ══════════════════════════════════════
+local speedModeNames = { "CFrame", "MicroStep", "FakeLag" }
+ABP.speed.modeList   = speedModeNames
+
+local FakeLag = { queue = {}, interval = 0.12, last = 0 }
+
+local function microStepSpeed(dt)
+    if CFG.Speed.Mode ~= "MicroStep" or not CFG.Speed.Enabled then return end
+    local root = myRoot()
+    if not root then return end
+    local hum  = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.MoveDirection.Magnitude < 0.1 then return end
+    local total = CFG.Speed.Value * dt
+    local chunk = total / 6
+    local dir   = hum.MoveDirection
+    for i = 1, 6 do
+        task.defer(function()
+            local r = myRoot()
+            if r then r.CFrame = r.CFrame + dir * chunk end
+        end)
+    end
+end
+
+local function fakeLagStep(dt)
+    if CFG.Speed.Mode ~= "FakeLag" or not CFG.Speed.Enabled then return end
+    local root = myRoot()
+    if not root then return end
+    local hum  = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.MoveDirection.Magnitude < 0.1 then return end
+    local dir  = hum.MoveDirection
+    local dist = CFG.Speed.Value * dt
+    FakeLag.queue[#FakeLag.queue + 1] = dir * dist
+    local now = os.clock()
+    if now - FakeLag.last >= FakeLag.interval then
+        FakeLag.last = now
+        if #FakeLag.queue > 0 then
+            local step = table.remove(FakeLag.queue, 1)
+            pcall(function() root.CFrame = root.CFrame + step * 0.4 end)
+        end
+    end
+end
+
+local function detectSpeedSnap()
+    local root = myRoot()
+    if not root then ABP.speed.lastPos = nil; return end
+    local hum  = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    local pos  = root.Position
+    local now  = os.clock()
+
+    if ABP.speed.lastPos and hum and hum.MoveDirection.Magnitude > 0.1 then
+        local moved      = (pos - ABP.speed.lastPos).Magnitude
+        local actualDir  = moved > 0.01 and (pos - ABP.speed.lastPos).Unit or Vector3.zero
+        if moved > 6 and hum.MoveDirection:Dot(actualDir) < -0.2
+           and (now - ABP.speed.lastSnap) > 0.3 then
+            ABP.speed.snapCount = ABP.speed.snapCount + 1
+            ABP.speed.lastSnap  = now
+            AL("SPEED", string.format(
+                "snap #%d | dist=%.1f | mode=%s",
+                ABP.speed.snapCount, moved, CFG.Speed.Mode
+            ))
+            notify("⚡ Speed: โดนดึงกลับ #" .. ABP.speed.snapCount
+                .. " (mode: " .. CFG.Speed.Mode .. ")")
+            if ABP.speed.snapCount >= 3 then
+                ABP.speed.snapCount = 0
+                ABP.speed:nextMode()
+            end
+        end
+    end
+    ABP.speed.lastPos = pos
+end
+
+function ABP.speed:nextMode()
+    if self.modeIdx >= #self.modeList then
+        AL("SPEED", "speed ครบทุก mode → WarpHop")
+        notify("⚡ Speed: ทุก mode ล้มเหลว → เปิด WarpHop แทน")
+        CFG.Speed.Enabled = false
+        ABP.warp.hopMode  = true
+        return
+    end
+    self.modeIdx = self.modeIdx + 1
+    CFG.Speed.Mode = self.modeList[self.modeIdx]
+    AL("SPEED", "switch → " .. CFG.Speed.Mode)
+    notify("⚡ Speed เปลี่ยนเป็น Mode " .. self.modeIdx .. ": " .. CFG.Speed.Mode)
+end
+
+-- ══════════════════════════════════════
+--  WARP ADAPTIVE
+-- ══════════════════════════════════════
+local function warpHop(target, hopDist)
+    hopDist = hopDist or 60
+    local root = myRoot()
+    if not root then return end
+    local from  = root.Position
+    local total = (target - from).Magnitude
+    local steps = math.ceil(total / hopDist)
+    local dir   = (target - from).Unit
+    task.spawn(function()
+        for i = 1, steps do
+            local dest = from + dir * math.min(hopDist * i, total)
+            local r    = myRoot()
+            if not r then break end
+            r.CFrame = CFrame.new(dest)
+            task.wait(0.08)
+            local r2     = myRoot()
+            local actual = r2 and r2.Position or dest
+            if (actual - dest).Magnitude > 15 then
+                hopDist = math.max(hopDist - 10, 20)
+                AL("WARP", "ลด hop dist → " .. hopDist)
+                notify("🌀 Warp: ลด hop distance → " .. hopDist .. " studs")
+            end
+        end
+    end)
+end
+
+local function patchWarpAction()
+    if not Actions.warpTo then
+        AL("WARP", "Actions.warpTo ไม่พบ — ข้าม")
+        return
+    end
+    local originalWarp = Actions.warpTo
+    Actions.warpTo = function(target)
+        originalWarp(target)
+        task.delay(0.4, function()
+            local r = myRoot()
+            if not r then return end
+            if (r.Position - target).Magnitude > 15 then
+                AL("WARP", "warp fail → hop")
+                notify("🌀 Warp: ปกติ fail → ใช้ WarpHop")
+                warpHop(target)
+            end
+        end)
+    end
+    AL("WARP", "warp patched")
+end
+
+-- ══════════════════════════════════════
+--  CFG เพิ่ม
+-- ══════════════════════════════════════
+CFG.God = CFG.God or { Enabled = false }
+
+-- ══════════════════════════════════════
+--  HOOK MAIN LOOPS
+-- ══════════════════════════════════════
+bind(RunService.Heartbeat, function(dt)
+    if not ABP.enabled then return end
+    pcall(detectSpeedSnap)
+    pcall(microStepSpeed, dt)
+    pcall(fakeLagStep, dt)
+end)
+
+bind(lp.CharacterAdded, function(char)
+    task.wait(0.3)
+    ABP.god:apply(char)
+    RemoteHits = {}
+    lastHealth  = 100
+end)
+if lp.Character then
+    task.spawn(function()
+        task.wait(0.3)
+        ABP.god:apply(lp.Character)
+    end)
+end
+
+-- ══════════════════════════════════════
+--  INIT
+-- ══════════════════════════════════════
+task.spawn(function()
+    task.wait(1)
+    setupRemoteSpy()
+    watchHealth()
+    patchWarpAction()
+    AL("INIT", "Adaptive Bypass พร้อม | hook=" .. tostring(CAP.Hook))
+    notify("✅ Adaptive Bypass โหลดแล้ว | hook=" .. tostring(CAP.Hook))
+end)
+
+-- expose log
+Actions.getABPLog = function()
+    return #ABP.log == 0 and "ยังไม่มี log" or table.concat(ABP.log, "\n")
+end
+
+-- ปุ่มใน UI
+task.spawn(function()
+    task.wait(1.5)
+    pcall(function()
+        local pg = P.tools
+        if not pg then return end
+        W.section(pg, "Adaptive Bypass", Color3.fromRGB(255, 100, 0))
+        W.button(pg, "ดู ABP Log", Color3.fromRGB(255, 100, 0), function()
+            notify(Actions.getABPLog())
+        end)
+        W.button(pg, "God Mode ON/OFF", Color3.fromRGB(255, 60, 60), function()
+            CFG.God.Enabled = not CFG.God.Enabled
+            notify("🛡 God Mode: " .. (CFG.God.Enabled and "ON" or "OFF"))
+            if CFG.God.Enabled and lp.Character then
+                ABP.god:apply(lp.Character)
+            end
+        end)
+    end)
+end)
