@@ -9,8 +9,8 @@
 --  อัปโหลดทั้งสองไฟล์ไปที่ GitHub repo แล้วใส่ raw URL ด้านล่าง
 -- ──────────────────────────────────────────────────────────
 local URLS = {
-    main  = "",   -- https://raw.githubusercontent.com/YOU/REPO/main/ZeroESP_v3.lua
-    patch = "",   -- https://raw.githubusercontent.com/YOU/REPO/main/ZeroESP_v3_BanDodge_Patch.lua
+    main  = "",   -- https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3.lua
+    patch = "",   -- https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3_BanDodge_Patch.lua
 }
 
 -- ──────────────────────────────────────────────────────────
