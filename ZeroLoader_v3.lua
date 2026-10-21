@@ -16,8 +16,8 @@ local URLS = {
 --  วิธีที่ 2: จาก File System  (ถ้า executor มี readfile)
 -- ──────────────────────────────────────────────────────────
 local FILES = {
-    main  = "ZeroESP_v3.lua",
-    patch = "ZeroESP_v3_BanDodge_Patch.lua",
+    main  = "ui_pro_DP_full.lua",
+    patch = "",
 }
 
 -- ──────────────────────────────────────────────────────────
