@@ -8,8 +8,8 @@
 --  วิธีที่ 1: จาก GitHub Raw  (แนะนำ — ใส่ URL เรียบร้อยแล้ว)
 -- ──────────────────────────────────────────────────────────
 local URLS = {
-    main  = "https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3.lua",
-    patch = "https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ZeroESP_v3_BanDodge_Patch.lua",
+    main  = "https://raw.githubusercontent.com/ZeroSuPerOne/zero-scripts/refs/heads/main/ui_pro_DP_full.lua",
+    patch = "",
 }
 
 -- ──────────────────────────────────────────────────────────
